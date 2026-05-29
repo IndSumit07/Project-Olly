@@ -1,6 +1,7 @@
 import { isCancel, select, text } from "@clack/prompts";
 import { defaultAgentConfig } from "./types";
 import { ActionTracker } from "./action-tracker";
+import { runApprovalFlow } from "./approval";
 import { ToolExecutor } from "./tool-executor";
 import { createAgentTools } from "./agent-tools";
 import { ToolLoopAgent, stepCountIs } from "ai";
@@ -69,68 +70,11 @@ async function resolvePendingMutations(
   executor: ToolExecutor,
 ) {
   const pending = tracker.getPendingMutations();
-  if (pending.length === 0) {
-    return;
-  }
+  if (pending.length === 0) return;
 
-  console.log(chalk.yellow(`\nStaged changes: ${pending.length}`));
-  for (const action of pending) {
-    console.log(
-      chalk.dim(
-        `- ${summarizeAction(action)} (${summarizeDiffPreview(action)})`,
-      ),
-    );
-  }
-
-  const decision = await select({
-    message: "What do you want to do with staged changes?",
-    options: [
-      { value: "apply_all", label: "Keep all (apply)" },
-      { value: "discard_all", label: "Discard all" },
-      { value: "review", label: "Review one by one" },
-    ],
-  });
-
-  if (isCancel(decision) || decision === "discard_all") {
-    for (const action of pending) {
-      tracker.updateStatus(action.id, "rejected", false);
-      if (action.type !== "tool_execute" && action.type !== "folder_create") {
-        executor.unstagePath(action.path);
-      }
-    }
-    console.log(chalk.yellow("Discarded all staged changes."));
-    return;
-  }
-
-  if (decision === "apply_all") {
-    for (const action of pending) {
-      tracker.updateStatus(action.id, "approved", true);
-    }
-  } else {
-    for (const action of pending) {
-      const perAction = await select({
-        message: `Change: ${summarizeAction(action)}`,
-        options: [
-          { value: "keep", label: "Keep this change" },
-          { value: "discard", label: "Discard this change" },
-        ],
-      });
-
-      if (isCancel(perAction) || perAction === "discard") {
-        tracker.updateStatus(action.id, "rejected", false);
-        if (action.type !== "tool_execute" && action.type !== "folder_create") {
-          executor.unstagePath(action.path);
-        }
-      } else {
-        tracker.updateStatus(action.id, "approved", true);
-      }
-    }
-  }
-
-  const approvedCount = tracker
-    .getActions()
-    .filter((a) => a.status === "approved").length;
-  if (approvedCount === 0) {
+  // Delegate the interactive review flow to runApprovalFlow
+  const approved = await runApprovalFlow(tracker);
+  if (!approved) {
     console.log(chalk.yellow("No approved changes to apply."));
     return;
   }
@@ -138,9 +82,7 @@ async function resolvePendingMutations(
   const { errors, appliedCount } = executor.applyApprovedFromTracker();
   if (errors.length > 0) {
     console.log(chalk.red("Some approved changes failed to apply:"));
-    for (const err of errors) {
-      console.log(chalk.red(`- ${err}`));
-    }
+    for (const err of errors) console.log(chalk.red(`- ${err}`));
   } else {
     console.log(chalk.green(`Applied ${appliedCount} approved change(s).`));
   }
