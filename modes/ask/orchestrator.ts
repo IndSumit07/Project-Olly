@@ -1,0 +1,175 @@
+import { isCancel, text } from "@clack/prompts";
+import { ToolLoopAgent, stepCountIs, tool } from "ai";
+import chalk from "chalk";
+import { z } from "zod";
+import { getAgentModel } from "../../ai";
+import { renderTerminalMarkdown } from "../../tui/terminal-md";
+import { ActionTracker } from "../agent/action-tracker";
+import { createAgentTools } from "../agent/agent-tools";
+import { ToolExecutor } from "../agent/tool-executor";
+import { defaultAgentConfig } from "../agent/types";
+
+function startTerminalLoader(message: string) {
+  const frames = ["|", "/", "-", "\\"];
+  let index = 0;
+  const startedAt = Date.now();
+
+  const timer = setInterval(() => {
+    const elapsedSec = Math.floor((Date.now() - startedAt) / 1000);
+    const frame = frames[index % frames.length] ?? "|";
+    process.stdout.write(
+      `\r${chalk.cyan(frame)} ${chalk.dim(message)} ${chalk.dim(`(${elapsedSec}s)`)}`,
+    );
+    index += 1;
+  }, 120);
+
+  return {
+    stop(finalMessage?: string) {
+      clearInterval(timer);
+      process.stdout.write("\r\x1b[K");
+      if (finalMessage) {
+        console.log(finalMessage);
+      }
+    },
+  };
+}
+
+function createAskTools(executor: ToolExecutor) {
+  const base = createAgentTools(executor);
+
+  return {
+    list_drives: base.list_drives,
+    read_file: base.read_file,
+    list_files: base.list_files,
+    search_files: base.search_files,
+    analyze_codebase: base.analyze_codebase,
+    list_skills: base.list_skills,
+    read_skill: base.read_skill,
+    read_package_json: tool({
+      description:
+        "Read the workspace package.json and summarize dependencies and scripts.",
+      inputSchema: z.object({}),
+      execute: async () => executor.readFile("package.json"),
+    }),
+    check_package: tool({
+      description:
+        "Check whether a package name exists in package.json dependencies, devDependencies, peerDependencies, or optionalDependencies.",
+      inputSchema: z.object({ name: z.string() }),
+      execute: async ({ name }) => {
+        const packageJson = executor.readFile("package.json");
+        const parsed = JSON.parse(packageJson) as {
+          dependencies?: Record<string, string>;
+          devDependencies?: Record<string, string>;
+          peerDependencies?: Record<string, string>;
+          optionalDependencies?: Record<string, string>;
+        };
+
+        const buckets: Array<[string, Record<string, string>]> = [
+          ["dependencies", parsed.dependencies ?? {}],
+          ["devDependencies", parsed.devDependencies ?? {}],
+          ["peerDependencies", parsed.peerDependencies ?? {}],
+          ["optionalDependencies", parsed.optionalDependencies ?? {}],
+        ];
+
+        const found = buckets
+          .filter(([, entries]) =>
+            Object.prototype.hasOwnProperty.call(entries, name),
+          )
+          .map(([bucketName]) => bucketName);
+
+        return found.length > 0
+          ? `${name} found in: ${found.join(", ")}`
+          : `${name} was not found in package.json`;
+      },
+    }),
+  };
+}
+
+export async function runAskMode() {
+  console.log(chalk.cyan("Starting Olly Ask Mode..."));
+
+  while (true) {
+    const question = await text({
+      message:
+        "What do you want Olly to answer? (type 'exit' to leave Ask Mode)",
+      placeholder:
+        "Example: 'Which packages are in package.json?' or 'Does react exist?'",
+    });
+
+    if (
+      isCancel(question) ||
+      !question?.trim() ||
+      question.trim().toLowerCase() === "exit"
+    ) {
+      console.log(
+        chalk.yellow(
+          "Leaving Ask Mode and returning to CLI sub-mode selection.",
+        ),
+      );
+      return;
+    }
+
+    const config = defaultAgentConfig();
+    config.tools.allowShellExecution = false;
+    config.tools.allowFileCreation = false;
+    config.tools.allowFileModification = false;
+    config.tools.allowFolderCreation = false;
+
+    const tracker = new ActionTracker();
+    const executor = new ToolExecutor(tracker, config);
+
+    const tools = createAskTools(executor);
+
+    const agent = new ToolLoopAgent({
+      model: getAgentModel(),
+      stopWhen: stepCountIs(20),
+      instructions: [
+        `Workspace root: ${config.codebasePath}`,
+        "You are in Ask Mode. Read-only only: never modify files, create files, run shell commands, or stage changes.",
+        "Use read-only tools to inspect the workspace and answer the user's question clearly.",
+        "For package questions, inspect package.json and report exact presence/absence.",
+        "Prefer concise markdown formatting when helpful.",
+      ].join("\n"),
+      tools,
+    });
+
+    const loader = startTerminalLoader("Olly is thinking...");
+    let result: { text?: string } | undefined;
+
+    try {
+      result = await agent.generate({
+        prompt: question.trim(),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      process.stdout.write("\r\x1b[K");
+      console.log(chalk.red("Ask Mode failed."));
+      console.log(chalk.red(`Reason: ${message}`));
+      console.log(
+        chalk.dim(
+          "Ask Mode is still active. Enter another question or type 'exit'.",
+        ),
+      );
+      continue;
+    } finally {
+      loader.stop(chalk.green("Olly completed the answer."));
+    }
+
+    if (result?.text?.trim()) {
+      console.log(chalk.blue.bold("Answer:"));
+      try {
+        console.log(renderTerminalMarkdown(result.text.trim()));
+      } catch {
+        console.log(result.text.trim());
+      }
+    } else {
+      console.log(chalk.yellow("No answer was returned."));
+    }
+
+    console.log(
+      chalk.dim(
+        "Ask Mode is still active. Enter another question or type 'exit'.",
+      ),
+    );
+  }
+}
