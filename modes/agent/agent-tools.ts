@@ -4,11 +4,19 @@ import type { ToolExecutor } from "./tool-executor";
 
 export function createAgentTools(executor: ToolExecutor) {
   return {
+    list_drives: tool({
+      description:
+        "List available Windows drives that can be used for cross-drive navigation.",
+      inputSchema: z.object({}),
+      execute: async () => executor.listDrives(),
+    }),
     read_file: tool({
       description:
-        "Read a text file from the workspace. Use a path relative to the project root.",
+        "Read a text file from either the workspace or an absolute path (for example D:/notes/todo.txt).",
       inputSchema: z.object({
-        path: z.string().describe("Relative file path"),
+        path: z
+          .string()
+          .describe("Relative workspace path or absolute file path"),
       }),
       execute: async ({ path: p }) => executor.readFile(p),
     }),
@@ -30,6 +38,27 @@ export function createAgentTools(executor: ToolExecutor) {
       }),
       execute: async ({ path: p, content }) => executor.modifyFile(p, content),
     }),
+    append_file: tool({
+      description:
+        "Stage appending text to an existing file (pending approval).",
+      inputSchema: z.object({
+        path: z.string(),
+        content: z.string().describe("Text to append to file"),
+      }),
+      execute: async ({ path: p, content }) => executor.appendFile(p, content),
+    }),
+    replace_in_file: tool({
+      description:
+        "Stage text replacement inside a file (pending approval). Use all=true to replace every match.",
+      inputSchema: z.object({
+        path: z.string(),
+        find: z.string().describe("Exact text to find"),
+        replace: z.string().describe("Replacement text"),
+        all: z.boolean().optional().default(false),
+      }),
+      execute: async ({ path: p, find, replace, all }) =>
+        executor.replaceInFile(p, find, replace, all),
+    }),
     delete_file: tool({
       description: "Stage deletion of a file (pending approval).",
       inputSchema: z.object({
@@ -46,7 +75,8 @@ export function createAgentTools(executor: ToolExecutor) {
       execute: async ({ path: p }) => executor.createFolder(p),
     }),
     list_files: tool({
-      description: "List files and directories under a path.",
+      description:
+        "List files and directories under a relative workspace path or absolute path.",
       inputSchema: z.object({
         path: z.string(),
         recursive: z.boolean().optional().default(false),
@@ -56,9 +86,13 @@ export function createAgentTools(executor: ToolExecutor) {
     }),
     search_files: tool({
       description:
-        "Find files matching a glob pattern (e.g. '**/*.ts', '**/*.md'). Optional content substring filter.",
+        "Find files matching a glob pattern (e.g. '**/*.ts', '**/*.md') from a relative workspace root or absolute root path. Optional content substring filter.",
       inputSchema: z.object({
-        root: z.string().describe("Directory to search, relative to root"),
+        root: z
+          .string()
+          .describe(
+            "Directory to search, relative workspace path or absolute path",
+          ),
         pattern: z
           .string()
           .describe("Glob-like pattern using * and ** (forward slashes)"),
@@ -69,7 +103,7 @@ export function createAgentTools(executor: ToolExecutor) {
     }),
     analyze_codebase: tool({
       description:
-        "Summarize structure: file counts, size, extensions. Read-only.",
+        "Summarize structure: file counts and directories for a relative workspace path or absolute path. Read-only.",
       inputSchema: z.object({
         path: z.string().default("."),
       }),
