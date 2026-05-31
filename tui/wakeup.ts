@@ -2,6 +2,7 @@ import {select, isCancel} from "@clack/prompts";
 import chalk from "chalk";
 import figlet from "figlet";
 import { runCliMode } from "../modes/cli";
+import { runTelegramMode } from "../modes/telegram/index";
 
 const BANNER_FONT = 'ANSI Shadow';
 const SHADOW = chalk.hex('#ff0000');
@@ -57,7 +58,8 @@ export async function runWakeup() {
 
         if(mode === "telegram") {
             console.log(chalk.dim("Awesome! Starting Olly in Telegram mode..."));
-            // Here you would initialize your Telegram bot interface for Olly
+            await runTelegramMode();
+            continue;
         }
     }
 }

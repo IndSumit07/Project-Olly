@@ -120,7 +120,6 @@ export function registerHandlers(bot: Telegraf) {
     approvalSessions.delete(ctx.chat!.id);
     for (const a of s.pending) s.tracker.updateStatus(a.id, 'approved', true);
     const { errors } = s.executor.applyApprovedFromTracker();
-    s.executor.clearStaging();
 
     await ctx.editMessageText('✅ All changes applied.');
     await ctx.answerCbQuery('Applied!');
@@ -134,7 +133,6 @@ export function registerHandlers(bot: Telegraf) {
 
     approvalSessions.delete(ctx.chat!.id);
     for (const a of s.pending) s.tracker.updateStatus(a.id, 'rejected', false);
-    s.executor.clearStaging();
 
     await ctx.editMessageText('❌ All changes rejected. Nothing was applied.');
     await ctx.answerCbQuery('Rejected');

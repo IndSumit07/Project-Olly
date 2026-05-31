@@ -1,7 +1,6 @@
 import { Telegraf } from "telegraf";
 import chalk from "chalk";
 import { WELCOME } from "./constants";
-import { resolve } from "node:dns";
 import { registerHandlers } from "./handlers";
 
 export async function runTelegramMode() {

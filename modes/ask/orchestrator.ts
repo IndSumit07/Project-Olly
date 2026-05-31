@@ -8,6 +8,7 @@ import { ActionTracker } from "../agent/action-tracker";
 import { createAgentTools } from "../agent/agent-tools";
 import { ToolExecutor } from "../agent/tool-executor";
 import { defaultAgentConfig } from "../agent/types";
+import { createWebTools } from "../plan/web-tools";
 
 function startTerminalLoader(message: string) {
   const frames = ["|", "/", "-", "\\"];
@@ -34,8 +35,9 @@ function startTerminalLoader(message: string) {
   };
 }
 
-function createAskTools(executor: ToolExecutor) {
+function createAskTools(executor: ToolExecutor, tracker: ActionTracker) {
   const base = createAgentTools(executor);
+  const hasWeb = !!process.env.FIRECRAWL_API_KEY;
 
   return {
     list_drives: base.list_drives,
@@ -82,6 +84,7 @@ function createAskTools(executor: ToolExecutor) {
           : `${name} was not found in package.json`;
       },
     }),
+    ...(hasWeb ? createWebTools(tracker) : {}),
   };
 }
 
@@ -118,7 +121,8 @@ export async function runAskMode() {
     const tracker = new ActionTracker();
     const executor = new ToolExecutor(tracker, config);
 
-    const tools = createAskTools(executor);
+    const hasWeb = !!process.env.FIRECRAWL_API_KEY;
+    const tools = createAskTools(executor, tracker);
 
     const agent = new ToolLoopAgent({
       model: getAgentModel(),
@@ -128,6 +132,9 @@ export async function runAskMode() {
         "You are in Ask Mode. Read-only only: never modify files, create files, run shell commands, or stage changes.",
         "Use read-only tools to inspect the workspace and answer the user's question clearly.",
         "For package questions, inspect package.json and report exact presence/absence.",
+        hasWeb
+          ? "Web tools are available (web_search, web_crawl, fetch_url). Use them when the question requires up-to-date information, documentation, or anything not in the codebase."
+          : "Web tools are unavailable (no FIRECRAWL_API_KEY set).",
         "Prefer concise markdown formatting when helpful.",
       ].join("\n"),
       tools,
