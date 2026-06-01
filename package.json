@@ -1,10 +1,10 @@
 {
   "name": "my-olly",
-  "version": "1.0.3",
+  "version": "2.0.0",
   "module": "index.ts",
   "type": "module",
-  "description": "Olly – Your AI coding assistant. Supports 13+ AI providers.",
-  "keywords": ["ai", "cli", "coding-assistant", "openai", "anthropic", "gemini", "groq", "ollama"],
+  "description": "Olly – Autonomous AI coding agent. Multi-step reasoning, file editing, shell execution, memory, skills & 13+ AI providers.",
+  "keywords": ["ai", "agent", "cli", "coding-assistant", "autonomous", "openai", "anthropic", "gemini", "groq", "ollama", "claude", "gpt", "ai-agent"],
   "bin": {
     "olly": "./bin/olly.ts"
   },
@@ -43,6 +43,7 @@
     "marked": "^15.0.12",
     "marked-terminal": "^7.3.0",
     "ollama-ai-provider": "1.2.0",
-    "telegraf": "^4.16.3"
+    "telegraf": "^4.16.3",
+    "zod": "^4.4.3"
   }
 }

@@ -1,220 +1,289 @@
-import { isCancel, select, text } from "@clack/prompts";
-import { defaultAgentConfig } from "./types";
-import { ActionTracker } from "./action-tracker";
-import { runApprovalFlow } from "./approval";
-import { ToolExecutor } from "./tool-executor";
-import { createAgentTools } from "./agent-tools";
+// ─────────────────────────────────────────────────────────────────────────────
+// Olly – Autonomous Agent Orchestrator (modes/agent/orchestrator.ts)
+// Full autonomous multi-step agent with live step logging, plan display,
+// memory injection, skills, session persistence.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { isCancel, text, confirm } from "@clack/prompts";
 import { ToolLoopAgent, stepCountIs } from "ai";
-import { getAgentModel } from "../../ai";
-import { renderTerminalMarkdown } from "../../tui/terminal-md";
 import chalk from "chalk";
-import type { ActionLog } from "./types";
+import os from "node:os";
+import { getAgentModel } from "../../ai";
+import { logger } from "../../tui/stepLogger";
+import { setAutoMode } from "../../tui/approvals";
+import { renderTerminalMarkdown } from "../../tui/terminal-md";
+import { loadMemoriesForPrompt } from "../../memory/store";
+import { getActiveSkillsPrompt } from "../../skills/index";
+import { createSession, saveSession } from "../session";
+import { allTools } from "../../tools/index";
 
-function isModelRoutingError(message: string): boolean {
-  return /no endpoints found|model not found/i.test(message);
+// ── Plan display ──────────────────────────────────────────────────────────────
+
+export function displayPlan(steps: string[]) {
+  const width = 50;
+  const border = "═".repeat(width);
+  console.log();
+  console.log(chalk.bold.cyan(`╔${border}╗`));
+  console.log(chalk.bold.cyan(`║  PLAN (${steps.length} steps)${" ".repeat(width - 10 - String(steps.length).length)}║`));
+  console.log(chalk.bold.cyan(`╠${border}╣`));
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i] ?? "";
+    const truncated = step.length > width - 5 ? step.slice(0, width - 8) + "…" : step;
+    console.log(chalk.cyan(`║`) + chalk.dim(`  ${i + 1}. `) + truncated.padEnd(width - 5) + chalk.cyan("║"));
+  }
+  console.log(chalk.bold.cyan(`╚${border}╝`));
+  console.log();
 }
 
-function summarizeAction(action: ActionLog): string {
-  if (action.type === "tool_execute") {
-    return `${action.type}: ${action.details.command ?? action.path}`;
+// ── Build rich system prompt ──────────────────────────────────────────────────
+
+async function buildSystemPrompt(goal: string): Promise<string> {
+  const now = new Date();
+  const cwd = process.cwd();
+  const platform = `${os.platform()} ${os.release()}`;
+  const nodeVersion = process.version;
+
+  // Load memories
+  const memoriesSection = await loadMemoriesForPrompt();
+  if (memoriesSection) {
+    logger.memory(`Loading memories...`);
   }
-  return `${action.type}: ${action.path}`;
+
+  // Load active skills
+  const skillsSection = getActiveSkillsPrompt();
+
+  const parts = [
+    `# Olly – Autonomous Agent`,
+    ``,
+    `## Environment`,
+    `- Date/Time: ${now.toLocaleString()}`,
+    `- OS: ${platform}`,
+    `- CWD: ${cwd}`,
+    `- Node: ${nodeVersion}`,
+    `- Bun: ${typeof Bun !== "undefined" ? Bun.version : "N/A"}`,
+    ``,
+    `## Current Goal`,
+    goal,
+    ``,
+    `## Instructions`,
+    `- Think step-by-step. Analyze the task, plan your approach, then execute.`,
+    `- Use tools to read files and context BEFORE making changes.`,
+    `- Log every significant action via the tools (they log automatically).`,
+    `- After every tool call, evaluate the result and decide next action.`,
+    `- On error, diagnose the root cause and try a different approach.`,
+    `- Prefer surgical edits (edit_file) over full rewrites (write_file).`,
+    `- ALWAYS run tests after code changes when tests exist.`,
+    `- When done, summarize what was accomplished and what files were modified.`,
+    `- Save important context to memory using memory_save.`,
+    ``,
+    `## Available Tool Categories`,
+    `- Filesystem: read_file, write_file, edit_file, list_directory, search_files, create_directory, delete_file, move_file, copy_file, get_file_info, find_files`,
+    `- Shell: exec_command, read_output, kill_process, list_processes`,
+    `- Memory: memory_save, memory_get, memory_search, memory_list, memory_delete`,
+    `- Web: web_fetch, web_search, download_file`,
+    `- Code: read_codebase, find_definition, run_tests, lint_code, git_status, git_diff, git_commit, git_log`,
+  ];
+
+  if (memoriesSection) {
+    parts.push("", memoriesSection);
+  }
+
+  if (skillsSection) {
+    parts.push("", skillsSection);
+  }
+
+  return parts.join("\n");
 }
 
-function summarizeDiffPreview(action: ActionLog): string {
-  if (action.type === "tool_execute") {
-    return action.details.command ? `cmd: ${action.details.command}` : "shell";
-  }
+// ── Thinking spinner ──────────────────────────────────────────────────────────
 
-  const before = action.details.before ?? "";
-  const after = action.details.after ?? "";
-  if (!before && after) {
-    return `new file (${after.length} chars)`;
-  }
-  if (before && !after) {
-    return `delete file (${before.length} chars)`;
-  }
-
-  const beforeLines = before ? before.split(/\r?\n/).length : 0;
-  const afterLines = after ? after.split(/\r?\n/).length : 0;
-  return `lines ${beforeLines} -> ${afterLines}, chars ${before.length} -> ${after.length}`;
-}
-
-function startTerminalLoader(message: string) {
-  const frames = ["|", "/", "-", "\\"];
-  let index = 0;
-  const startedAt = Date.now();
-
+function makeThinkingSpinner() {
+  let active = true;
+  const frames = ["✧", "✦", "✧", "✦"];
+  let i = 0;
   const timer = setInterval(() => {
-    const elapsedSec = Math.floor((Date.now() - startedAt) / 1000);
-    const frame = frames[index % frames.length] ?? "|";
-    process.stdout.write(
-      `\r${chalk.cyan(frame)} ${chalk.dim(message)} ${chalk.dim(`(${elapsedSec}s)`)}`,
-    );
-    index += 1;
-  }, 120);
+    if (!active) return;
+    const frame = frames[i % frames.length] ?? "✧";
+    process.stdout.write(`\r${chalk.dim(frame)} ${chalk.dim.italic("Thinking...")}  `);
+    i++;
+  }, 300);
 
   return {
-    stop(finalMessage?: string) {
+    stop() {
+      active = false;
       clearInterval(timer);
       process.stdout.write("\r\x1b[K");
-      if (finalMessage) {
-        console.log(finalMessage);
-      }
     },
   };
 }
 
-async function resolvePendingMutations(
-  tracker: ActionTracker,
-  executor: ToolExecutor,
-) {
-  const pending = tracker.getPendingMutations();
-  if (pending.length === 0) return;
+// ── Agent run options ─────────────────────────────────────────────────────────
 
-  // Delegate the interactive review flow to runApprovalFlow
-  const approved = await runApprovalFlow(tracker);
-  if (!approved) {
-    console.log(chalk.yellow("No approved changes to apply."));
-    return;
-  }
-
-  const { errors, appliedCount } = executor.applyApprovedFromTracker();
-  if (errors.length > 0) {
-    console.log(chalk.red("Some approved changes failed to apply:"));
-    for (const err of errors) console.log(chalk.red(`- ${err}`));
-  } else {
-    console.log(chalk.green(`Applied ${appliedCount} approved change(s).`));
-  }
+export interface AgentRunOptions {
+  goal: string;
+  autoMode?: boolean;
+  dryRun?: boolean;
+  maxSteps?: number;
+  showPlan?: boolean;
 }
 
-export async function runAgentMode() {
-  console.log("Starting Olly Orchestrator...");
+// ── Run the agent ─────────────────────────────────────────────────────────────
+
+export async function runAgent(opts: AgentRunOptions): Promise<void> {
+  const { goal, autoMode = false, dryRun = false, maxSteps = 20 } = opts;
+
+  if (autoMode) setAutoMode(true);
+
+  logger.thinking("Analyzing task...");
+
+  // Show dry-run notice
+  if (dryRun) {
+    console.log(chalk.yellow("\n⚠  DRY RUN MODE — no files will be written\n"));
+  }
+
+  // Build system prompt with memories + skills
+  const systemPrompt = await buildSystemPrompt(goal);
+
+  // Create session
+  const session = createSession(goal);
+
+  // Build tool set (omit write tools for dry-run)
+  const tools = dryRun
+    ? {
+        read_file: allTools.read_file,
+        list_directory: allTools.list_directory,
+        search_files: allTools.search_files,
+        get_file_info: allTools.get_file_info,
+        find_files: allTools.find_files,
+        read_codebase: allTools.read_codebase,
+        find_definition: allTools.find_definition,
+        git_status: allTools.git_status,
+        git_diff: allTools.git_diff,
+        git_log: allTools.git_log,
+        web_fetch: allTools.web_fetch,
+        web_search: allTools.web_search,
+        memory_get: allTools.memory_get,
+        memory_list: allTools.memory_list,
+        memory_search: allTools.memory_search,
+      }
+    : allTools;
+
+  // Create agent
+  const agent = new ToolLoopAgent({
+    model: getAgentModel(),
+    stopWhen: stepCountIs(maxSteps),
+    instructions: systemPrompt,
+    tools,
+  });
+
+  // Step counter — use mutable ref so spinner can be swapped between steps
+  let stepNum = 0;
+  const spinnerRef = { current: makeThinkingSpinner() };
+
+  const onStepFinish = ({ toolCalls }: { toolCalls: { toolName: string; input: unknown }[] }) => {
+    spinnerRef.current.stop();
+    stepNum++;
+
+    for (const tc of toolCalls) {
+      const inputStr = JSON.stringify(tc.input).slice(0, 120);
+      logger.plan(`Step ${stepNum}: ${tc.toolName} ${chalk.dim(inputStr)}`);
+      session.commandsRun.push(tc.toolName);
+    }
+
+    // Restart thinking spinner for the next LLM call
+    if (stepNum < maxSteps) {
+      setTimeout(() => { spinnerRef.current = makeThinkingSpinner(); }, 50);
+    }
+  };
+
+  let result: { text?: string } | undefined;
+
+  try {
+    result = await agent.generate({
+      prompt: goal,
+      onStepFinish: onStepFinish as Parameters<typeof agent.generate>[0]["onStepFinish"],
+    });
+  } catch (err) {
+    spinnerRef.current.stop();
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error(`Agent failed: ${msg}`);
+    logger.warning("Check your API key and model config with 'olly setup'");
+    return;
+  } finally {
+    spinnerRef.current.stop();
+  }
+
+  // Save session
+  session.messages.push({
+    role: "user",
+    content: goal,
+    timestamp: new Date().toISOString(),
+  });
+  if (result?.text) {
+    session.messages.push({
+      role: "assistant",
+      content: result.text,
+      timestamp: new Date().toISOString(),
+    });
+  }
+  await saveSession(session);
+
+  // Show result
+  console.log();
+  console.log(chalk.bold.green("━".repeat(52)));
+  console.log(chalk.bold.green(" ✔  Agent completed"));
+  console.log(chalk.bold.green("━".repeat(52)));
+
+  if (result?.text?.trim()) {
+    try {
+      console.log(renderTerminalMarkdown(result.text.trim()));
+    } catch {
+      console.log(result.text.trim());
+    }
+  }
+
+  logger.info(`Session saved (${stepNum} steps)`);
+
+  // Reset auto mode
+  if (autoMode) setAutoMode(false);
+}
+
+// ── Interactive agent mode (wakeup flow) ──────────────────────────────────────
+
+export async function runAgentMode(opts: { auto?: boolean; dryRun?: boolean } = {}): Promise<void> {
+  console.log(chalk.bold.cyan("\n⚡ Olly Agent Mode\n"));
 
   while (true) {
     const goal = await text({
       message: "What do you want Olly to do? (type 'exit' to leave Agent Mode)",
-      placeholder:
-        "Example: 'Help me debug my JavaScript code that is throwing an error.'",
+      placeholder: "Example: 'Refactor index.ts to use async/await throughout'",
     });
 
-    if (
-      isCancel(goal) ||
-      !goal?.trim() ||
-      goal.trim().toLowerCase() === "exit"
-    ) {
-      console.log(
-        chalk.yellow(
-          "Leaving Agent Mode and returning to CLI sub-mode selection.",
-        ),
-      );
+    if (isCancel(goal) || !goal?.trim() || goal.trim().toLowerCase() === "exit") {
+      console.log(chalk.yellow("Leaving Agent Mode."));
       return;
     }
 
-    const config = defaultAgentConfig();
-
-    const tracker = new ActionTracker();
-    const executor = new ToolExecutor(tracker, config);
-
-    const tools = createAgentTools(executor);
-
-    const sharedInstructions = [
-      `Workspace root: ${config.codebasePath}`,
-      "All mutations are staged until approval.",
-      "First inspect context, then propose an execution plan, then execute tools.",
-      "Prefer minimal safe edits and include verification steps before concluding.",
-      "When using write tools, prefer replace_in_file or append_file for surgical changes before full-file modify_file.",
-    ].join("\n");
-
-    const onStepFinish = ({
-      toolCalls,
-    }: {
-      toolCalls: { toolName: string; input: unknown }[];
-    }) => {
-      for (const tc of toolCalls) {
-        const preview = JSON.stringify(tc.input).slice(0, 160);
-
-        process.stdout.write("\r\x1b[K");
-        console.log(
-          chalk.green("✓"),
-          chalk.bold(String(tc.toolName)),
-          chalk.dim(preview + (preview.length >= 160 ? "..." : "")),
-        );
-      }
-    };
-
-    const runWithModel = () => {
-      const agent = new ToolLoopAgent({
-        model: getAgentModel(),
-        stopWhen: stepCountIs(40),
-        instructions: sharedInstructions,
-        tools,
+    // Confirm plan before executing
+    if (!opts.auto) {
+      logger.thinking("Analyzing task...");
+      const proceed = await confirm({
+        message: `Proceed with: "${goal.trim().slice(0, 80)}"?`,
       });
 
-      return agent.generate({
-        prompt: goal.trim(),
-        onStepFinish,
-      });
-    };
-
-    const loader = startTerminalLoader("Olly is working on your task...");
-    let result: { text?: string } | undefined;
-    let runFailed = false;
-
-    try {
-      result = await runWithModel();
-    } catch (error) {
-      process.stdout.write("\r\x1b[K");
-      const message = error instanceof Error ? error.message : String(error);
-      runFailed = true;
-      console.log(chalk.red("Agent run failed."));
-      console.log(
-        chalk.red(
-          `Reason: ${message}. Check your provider config with 'olly setup' and verify your API key and model are correct, then try again.`,
-        ),
-      );
-    } finally {
-      loader.stop(chalk.green("Olly completed the task."));
-    }
-
-    if (runFailed) {
-      console.log(
-        chalk.dim(
-          "Agent Mode is still active. Enter another instruction or type 'exit'.",
-        ),
-      );
-      continue;
-    }
-
-    if (!result) {
-      console.log(
-        chalk.dim("No response received. Agent Mode is still active."),
-      );
-      continue;
-    }
-
-    if (result.text?.trim()) {
-      console.log(chalk.blue.bold("Agent finished with result:"));
-      try {
-        console.log(renderTerminalMarkdown(result.text.trim()));
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        console.log(
-          chalk.yellow(
-            `Markdown render failed (${message}). Falling back to plain text output.`,
-          ),
-        );
-        console.log(result.text.trim());
+      if (isCancel(proceed) || !proceed) {
+        console.log(chalk.dim("Task cancelled. Enter another instruction or 'exit'."));
+        continue;
       }
-    } else {
-      console.log(chalk.blue.bold("Agent finished without a final result."));
     }
 
-    await resolvePendingMutations(tracker, executor);
-    console.log(
-      chalk.dim(
-        "Agent Mode is still active. Enter another instruction or type 'exit'.",
-      ),
-    );
+    await runAgent({
+      goal: goal.trim(),
+      autoMode: opts.auto,
+      dryRun: opts.dryRun,
+      maxSteps: 20,
+    });
+
+    console.log(chalk.dim("\nAgent Mode is still active. Enter another instruction or 'exit'."));
   }
 }
