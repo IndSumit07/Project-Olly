@@ -99,7 +99,7 @@ export function getAgentModel(): LanguageModel {
     // ── Anthropic ───────────────────────────────────────────────────────────
     case "anthropic": {
       const anthropic = createAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-      return asLanguageModel(anthropic(modelId || "claude-3-5-sonnet-20241022"));
+      return asLanguageModel(anthropic(modelId || "claude-sonnet-4-5"));
     }
 
     // ── Google Gemini ───────────────────────────────────────────────────────
@@ -107,13 +107,13 @@ export function getAgentModel(): LanguageModel {
       const google = createGoogleGenerativeAI({
         apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
       });
-      return asLanguageModel(google(modelId || "gemini-2.0-flash"));
+      return asLanguageModel(google(modelId || "gemini-2.5-flash"));
     }
 
     // ── Groq ────────────────────────────────────────────────────────────────
     case "groq": {
       const groq = createGroq({ apiKey: process.env.GROQ_API_KEY });
-      return asLanguageModel(groq(modelId || "llama-3.3-70b-versatile"));
+      return asLanguageModel(groq(modelId || "meta-llama/llama-4-scout-17b-16e-instruct"));
     }
 
     // ── Mistral ─────────────────────────────────────────────────────────────
@@ -125,7 +125,7 @@ export function getAgentModel(): LanguageModel {
     // ── xAI (Grok) ──────────────────────────────────────────────────────────
     case "xai": {
       const xai = createXai({ apiKey: process.env.XAI_API_KEY });
-      return asLanguageModel(xai(modelId || "grok-3"));
+      return asLanguageModel(xai(modelId || "grok-4"));
     }
 
     // ── DeepSeek ────────────────────────────────────────────────────────────
@@ -137,7 +137,7 @@ export function getAgentModel(): LanguageModel {
     // ── Cohere ──────────────────────────────────────────────────────────────
     case "cohere": {
       const cohere = createCohere({ apiKey: process.env.COHERE_API_KEY });
-      return asLanguageModel(cohere(modelId || "command-r-plus-08-2024"));
+      return asLanguageModel(cohere(modelId || "command-a-03-2025"));
     }
 
     // ── Perplexity ──────────────────────────────────────────────────────────
@@ -149,7 +149,7 @@ export function getAgentModel(): LanguageModel {
     // ── Cerebras ────────────────────────────────────────────────────────────
     case "cerebras": {
       const cerebras = createCerebras({ apiKey: process.env.CEREBRAS_API_KEY });
-      return asLanguageModel(cerebras(modelId || "llama-3.3-70b"));
+      return asLanguageModel(cerebras(modelId || "qwen-3-235b-a22b-instruct-2507"));
     }
 
     // ── Azure OpenAI ────────────────────────────────────────────────────────
