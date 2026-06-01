@@ -25,7 +25,8 @@ function stepPrompt(goal: string, step: PlanStep): string {
 async function executeStep(
   goal: string,
   step: PlanStep,
-  tools: Record<string, unknown>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tools: Record<string, any>,
 ): Promise<void> {
   console.log(chalk.bold.cyan(`\n⚙  Executing: ${step.title}\n`));
 

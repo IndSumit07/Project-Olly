@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { Command } from "commander";
 import { runWakeup } from "./tui/wakeup";
+import { runSetup, getEnvPath } from "./tui/setup";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -46,9 +47,13 @@ function loadEnvFile(filePath: string) {
 function loadEnv() {
   const cwdEnvPath = resolve(process.cwd(), ".env");
   const projectEnvPath = resolve(import.meta.dir, ".env");
+  const globalEnvPath = getEnvPath();
 
-  loadEnvFile(cwdEnvPath);
-  if (projectEnvPath !== cwdEnvPath) {
+  loadEnvFile(globalEnvPath);
+  if (cwdEnvPath !== globalEnvPath) {
+    loadEnvFile(cwdEnvPath);
+  }
+  if (projectEnvPath !== cwdEnvPath && projectEnvPath !== globalEnvPath) {
     loadEnvFile(projectEnvPath);
   }
 }
@@ -69,6 +74,13 @@ program
   .description("Wake up Olly and start the assistant.")
   .action(async () => {
     await runWakeup();
+  });
+
+program
+  .command("setup")
+  .description("Setup Olly configuration and API keys interactively.")
+  .action(async () => {
+    await runSetup();
   });
 
 await program.parseAsync(process.argv);

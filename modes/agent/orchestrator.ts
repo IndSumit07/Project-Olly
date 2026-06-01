@@ -170,7 +170,7 @@ export async function runAgentMode() {
       console.log(chalk.red("Agent run failed."));
       console.log(
         chalk.red(
-          `Reason: ${message}. Check OPENROUTER_DEFAULT_MODEL (must be openrouter/free) and provider access, then try again.`,
+          `Reason: ${message}. Check your provider config with 'olly setup' and verify your API key and model are correct, then try again.`,
         ),
       );
     } finally {

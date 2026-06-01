@@ -1,11 +1,15 @@
 {
-  "name": "olly",
-  "version": "1.0.0",
+  "name": "my-olly",
+  "version": "1.0.2",
   "module": "index.ts",
   "type": "module",
-  "private": true,
+  "description": "Olly – Your AI coding assistant. Supports 13+ AI providers.",
+  "keywords": ["ai", "cli", "coding-assistant", "openai", "anthropic", "gemini", "groq", "ollama"],
   "bin": {
     "olly": "./bin/olly.ts"
+  },
+  "scripts": {
+    "postinstall": "node scripts/postinstall.cjs"
   },
   "devDependencies": {
     "@types/bun": "^1.3.14"
@@ -14,6 +18,17 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^1.0.0",
+    "@ai-sdk/azure": "^1.0.0",
+    "@ai-sdk/cerebras": "^2.0.0",
+    "@ai-sdk/cohere": "^1.0.0",
+    "@ai-sdk/deepseek": "^2.0.0",
+    "@ai-sdk/google": "^1.0.0",
+    "@ai-sdk/groq": "^1.0.0",
+    "@ai-sdk/mistral": "^1.0.0",
+    "@ai-sdk/openai": "^1.0.0",
+    "@ai-sdk/perplexity": "^3.0.0",
+    "@ai-sdk/xai": "^3.0.0",
     "@clack/core": "^1.3.1",
     "@clack/prompts": "^1.4.0",
     "@mendable/firecrawl-js": "^4.25.1",
@@ -27,6 +42,7 @@
     "figlet": "^1.11.0",
     "marked": "^15.0.12",
     "marked-terminal": "^7.3.0",
+    "ollama-ai-provider": "^1.2.0",
     "telegraf": "^4.16.3"
   }
 }

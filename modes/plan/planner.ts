@@ -112,8 +112,9 @@ export async function generatePlan(goal: string) {
 
   const hasWeb = !!process.env.FIRECRAWL_API_KEY;
   const model = wrapLanguageModel({
-    model:getAgentModel(),
-    middleware:extractJsonMiddleware()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    model: getAgentModel() as any,
+    middleware: extractJsonMiddleware()
   })
 
 
