@@ -1,6 +1,6 @@
 {
   "name": "my-olly",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "module": "index.ts",
   "type": "module",
   "description": "Olly – Autonomous AI coding agent. Multi-step reasoning, file editing, shell execution, memory, skills & 13+ AI providers.",
@@ -44,6 +44,6 @@
     "marked-terminal": "^7.3.0",
     "ollama-ai-provider": "1.2.0",
     "telegraf": "^4.16.3",
-    "zod": "^4.4.3"
+    "zod": "^3.23.8"
   }
 }
