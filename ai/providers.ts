@@ -2,6 +2,8 @@
 // Olly – AI Providers & Models Registry
 // Models sourced directly from each SDK's type definitions (verified available)
 // Package versions: ai@6.0.193, all @ai-sdk/* pinned to latest
+// Providers: TokenLB, OpenRouter, OpenAI, Anthropic, Google, Groq, Mistral,
+//            xAI, DeepSeek, Cohere, Perplexity, Cerebras, Azure OpenAI, Ollama
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface ModelEntry {
@@ -20,6 +22,23 @@ export interface ProviderEntry {
 }
 
 export const PROVIDERS: ProviderEntry[] = [
+
+  // ── TokenLB ─────────────────────────────────────────────────────────────────
+  // OpenAI-compatible proxy — access Claude, GPT, and more via one key
+  {
+    id: "tokenlb",
+    label: "TokenLB  (OpenAI-compatible proxy)",
+    envKey: "TOKENLB_API_KEY",
+    apiKeyHint: "sk-hU...",
+    requiresKey: true,
+    models: [
+      { id: "claude-opus-4-6",   label: "Claude Opus 4.6",    contextK: 200 },
+      { id: "claude-sonnet-4-5", label: "Claude Sonnet 4.5",  contextK: 200 },
+      { id: "gpt-4o",            label: "GPT-4o",             contextK: 128 },
+      { id: "gpt-4o-mini",       label: "GPT-4o Mini",        contextK: 128 },
+      { id: "gpt-4.1",           label: "GPT-4.1",            contextK: 1000},
+    ],
+  },
 
   // ── OpenRouter ──────────────────────────────────────────────────────────────
   // Free tier available — routes to hundreds of models

@@ -1,21 +1,54 @@
 {
   "name": "my-olly",
-  "version": "2.0.1",
-  "module": "index.ts",
+  "version": "2.1.0",
   "type": "module",
-  "description": "Olly – Autonomous AI coding agent. Multi-step reasoning, file editing, shell execution, memory, skills & 13+ AI providers.",
-  "keywords": ["ai", "agent", "cli", "coding-assistant", "autonomous", "openai", "anthropic", "gemini", "groq", "ollama", "claude", "gpt", "ai-agent"],
-  "bin": {
-    "olly": "./bin/olly.ts"
+  "description": "Olly – Autonomous AI coding agent. Multi-step reasoning, file editing, shell execution, memory, skills & 15+ AI providers including TokenLB.",
+  "keywords": [
+    "ai", "agent", "cli", "coding-assistant", "autonomous",
+    "openai", "anthropic", "gemini", "groq", "ollama",
+    "claude", "gpt", "ai-agent", "tokenlb", "openrouter",
+    "terminal", "developer-tools", "code-generation"
+  ],
+  "homepage": "https://github.com/IndSumit07/Project-Olly#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/IndSumit07/Project-Olly.git"
   },
+  "bugs": {
+    "url": "https://github.com/IndSumit07/Project-Olly/issues"
+  },
+  "license": "MIT",
+  "author": "IndSumit07",
+  "bin": {
+    "olly": "./bin/olly.js"
+  },
+  "files": [
+    "bin/",
+    "ai/",
+    "modes/",
+    "tui/",
+    "tools/",
+    "memory/",
+    "skills/",
+    "scripts/",
+    "index.js",
+    "README.md",
+    "context.md"
+  ],
   "scripts": {
-    "postinstall": "node scripts/postinstall.cjs"
+    "build": "bun build ./index.ts --outdir ./dist --target node --format esm && bun build ./bin/olly.ts --outdir ./bin --outfile olly.js --target node --format esm",
+    "prepublishOnly": "bun run build",
+    "postinstall": "node scripts/postinstall.cjs",
+    "dev": "bun run index.ts"
   },
   "devDependencies": {
     "@types/bun": "^1.3.14"
   },
   "peerDependencies": {
     "typescript": "^5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "3.0.81",

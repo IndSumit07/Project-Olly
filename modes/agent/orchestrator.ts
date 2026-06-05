@@ -4,7 +4,7 @@
 // memory injection, skills, session persistence.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { isCancel, text, confirm } from "@clack/prompts";
+import { isCancel, text } from "@clack/prompts";
 import { ToolLoopAgent, stepCountIs } from "ai";
 import chalk from "chalk";
 import os from "node:os";
@@ -16,6 +16,7 @@ import { loadMemoriesForPrompt } from "../../memory/store";
 import { getActiveSkillsPrompt } from "../../skills/index";
 import { createSession, saveSession } from "../session";
 import { allTools } from "../../tools/index";
+import { processSlashCommand, printSlashSuggestions } from "../../tui/slash-commands";
 
 // ── Plan display ──────────────────────────────────────────────────────────────
 
@@ -252,38 +253,48 @@ export async function runAgent(opts: AgentRunOptions): Promise<void> {
 
 export async function runAgentMode(opts: { auto?: boolean; dryRun?: boolean } = {}): Promise<void> {
   console.log(chalk.bold.cyan("\n⚡ Olly Agent Mode\n"));
+  console.log(chalk.dim("  Type '/' for slash commands (/model /provider /config /help /auto)"));
+  console.log(chalk.dim("  Type 'exit' to leave Agent Mode.\n"));
 
   while (true) {
     const goal = await text({
-      message: "What do you want Olly to do? (type 'exit' to leave Agent Mode)",
-      placeholder: "Example: 'Refactor index.ts to use async/await throughout'",
+      message: "Task:",
+      placeholder: "e.g. 'Refactor index.ts' or '/' for commands",
     });
 
-    if (isCancel(goal) || !goal?.trim() || goal.trim().toLowerCase() === "exit") {
+    if (isCancel(goal) || !goal?.trim()) {
       console.log(chalk.yellow("Leaving Agent Mode."));
       return;
     }
 
-    // Confirm plan before executing
-    if (!opts.auto) {
-      logger.thinking("Analyzing task...");
-      const proceed = await confirm({
-        message: `Proceed with: "${goal.trim().slice(0, 80)}"?`,
-      });
+    const trimmedGoal = goal.trim();
 
-      if (isCancel(proceed) || !proceed) {
-        console.log(chalk.dim("Task cancelled. Enter another instruction or 'exit'."));
-        continue;
-      }
+    // Exit
+    if (trimmedGoal.toLowerCase() === "exit") {
+      console.log(chalk.yellow("Leaving Agent Mode."));
+      return;
     }
 
+    // Show suggestions when user just types "/"
+    if (trimmedGoal === "/") {
+      printSlashSuggestions();
+      continue;
+    }
+
+    // Handle slash commands (/model, /provider, /config, /help, /auto, etc.)
+    if (trimmedGoal.startsWith("/")) {
+      await processSlashCommand(trimmedGoal);
+      continue;
+    }
+
+    // Execute task immediately — no confirmation needed
     await runAgent({
-      goal: goal.trim(),
-      autoMode: opts.auto,
+      goal: trimmedGoal,
+      autoMode: true, // Agent mode always auto-approves
       dryRun: opts.dryRun,
       maxSteps: 20,
     });
 
-    console.log(chalk.dim("\nAgent Mode is still active. Enter another instruction or 'exit'."));
+    console.log(chalk.dim("\n  Agent Mode active. Next task or '/' for commands."));
   }
 }

@@ -58,7 +58,12 @@ export async function runSetup() {
   // ── Step 1: Choose Provider ──────────────────────────────────────────────
   note(
     chalk.cyan(
-      "Olly supports 13+ AI providers.\nChoose one as your default — you can change it anytime by running 'olly setup'."
+      "Olly supports 15+ AI providers (including TokenLB with Claude Opus 4.6).\n" +
+      "Choose one as your default — change anytime with:\n" +
+      "  • olly set provider <id>    — one-liner switch\n" +
+      "  • /provider in agent/ask/plan modes\n" +
+      "  • olly config               — interactive editor\n" +
+      "  • olly setup                — full wizard"
     ),
     "Provider Selection"
   );

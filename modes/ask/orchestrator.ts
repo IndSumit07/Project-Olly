@@ -9,6 +9,7 @@ import { createAgentTools } from "../agent/agent-tools";
 import { ToolExecutor } from "../agent/tool-executor";
 import { defaultAgentConfig } from "../agent/types";
 import { createWebTools } from "../plan/web-tools";
+import { processSlashCommand, printSlashSuggestions } from "../../tui/slash-commands";
 
 function startTerminalLoader(message: string) {
   const frames = ["|", "/", "-", "\\"];
@@ -90,13 +91,14 @@ function createAskTools(executor: ToolExecutor, tracker: ActionTracker) {
 
 export async function runAskMode() {
   console.log(chalk.cyan("Starting Olly Ask Mode..."));
+  console.log(chalk.dim("  Type '/' for slash commands (/model /provider /config /help)\n"));
 
   while (true) {
     const question = await text({
       message:
-        "What do you want Olly to answer? (type 'exit' to leave Ask Mode)",
+        "Question: (type 'exit' to leave, '/' for commands)",
       placeholder:
-        "Example: 'Which packages are in package.json?' or 'Does react exist?'",
+        "Example: 'Which packages are in package.json?' or '/' for commands",
     });
 
     if (
@@ -112,6 +114,11 @@ export async function runAskMode() {
       return;
     }
 
+    const trimmedQ = question.trim();
+
+    // Handle slash commands
+    if (trimmedQ === "/") { printSlashSuggestions(); continue; }
+    if (trimmedQ.startsWith("/")) { await processSlashCommand(trimmedQ); continue; }
     const config = defaultAgentConfig();
     config.tools.allowShellExecution = false;
     config.tools.allowFileCreation = false;
@@ -145,7 +152,7 @@ export async function runAskMode() {
 
     try {
       result = await agent.generate({
-        prompt: question.trim(),
+        prompt: trimmedQ,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

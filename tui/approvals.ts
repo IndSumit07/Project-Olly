@@ -100,18 +100,34 @@ export async function requestApproval(req: ApprovalRequest): Promise<ApprovalRes
   return result;
 }
 
-// ── Auto-approve policy ───────────────────────────────────────────────────────
-let _autoMode = false;
+// ── Auto-approve policy ───────────────────────────────────────────────────────────────────
+
+// Initialize from env — if OLLY_AUTO=1 or OLLY_AUTO=true, auto-approve by default
+let _autoMode = ["1", "true", "yes"].includes(
+  (process.env.OLLY_AUTO ?? "").toLowerCase()
+);
 
 export function setAutoMode(on: boolean) { _autoMode = on; }
 export function isAutoMode() { return _autoMode; }
 
-/** Auto-approve non-destructive ops when --auto flag is set */
+/** Auto-approve all ops when auto mode is set.
+ * In agent mode, autoMode=true means execute immediately without asking.
+ * CRITICAL ops are always blocked regardless of auto mode.
+ */
 export async function gatedApproval(req: ApprovalRequest): Promise<boolean> {
-  if (_autoMode && req.risk !== "high" && req.risk !== "critical") {
+  // CRITICAL always blocked
+  if (req.risk === "critical") {
+    logger.error(`Blocked: ${req.tool} \u2014 ${req.action}`);
+    logger.warning("This operation is in the shell denylist and cannot be executed.");
+    return false;
+  }
+
+  // Auto mode: approve everything except critical
+  if (_autoMode) {
     logger.tool(req.tool, req.action + " (auto-approved)");
     return true;
   }
+
   const result = await requestApproval(req);
   return result === "allow_once" || result === "allow_session";
 }

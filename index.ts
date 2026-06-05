@@ -2,6 +2,7 @@
 import { Command } from "commander";
 import { runWakeup } from "./tui/wakeup";
 import { runSetup, getEnvPath } from "./tui/setup";
+import { processSlashCommand, printSlashSuggestions } from "./tui/slash-commands";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import chalk from "chalk";
@@ -45,7 +46,7 @@ const program = new Command();
 program
   .name("olly")
   .description("Meet Olly, your autonomous AI coding assistant.")
-  .version("2.0.0");
+  .version("2.1.0");
 
 // ── olly wakeup ───────────────────────────────────────────────────────────────
 program
@@ -82,6 +83,63 @@ program
     } else {
       await runAgentMode({ auto: opts?.auto, dryRun: opts?.dryRun });
     }
+  });
+
+// ── olly config ───────────────────────────────────────────────────────────────
+program
+  .command("config")
+  .description("Interactively view and change provider, model, and settings.")
+  .action(async () => {
+    await processSlashCommand("/config");
+  });
+
+// ── olly set — quick one-liner config ─────────────────────────────────────────
+program
+  .command("set <key> [value]")
+  .description("Quickly set a config value. Keys: provider, model, auto, apikey")
+  .addHelpText("after", `
+  Examples:
+    olly set provider tokenlb
+    olly set model claude-opus-4-6
+    olly set auto on
+    olly set apikey sk-hU...  (sets key for current provider)
+  `)
+  .action(async (key: string, value?: string) => {
+    const k = key.toLowerCase();
+    if (k === "provider")  { await processSlashCommand(`/provider ${value ?? ""}`); return; }
+    if (k === "model")     { await processSlashCommand(`/model ${value ?? ""}`);    return; }
+    if (k === "auto")      { await processSlashCommand(`/auto ${value ?? ""}`);     return; }
+    if (k === "approve")   { await processSlashCommand(`/approve ${value ?? ""}`); return; }
+    if (k === "apikey" || k === "key") {
+      // Write to current provider's key
+      const provider = process.env.OLLY_PROVIDER ?? "openrouter";
+      const { PROVIDERS } = await import("./ai/providers");
+      const p = PROVIDERS.find((x: { id: string }) => x.id === provider);
+      if (!p) { console.log(chalk.red(`Unknown provider: ${provider}`)); return; }
+      if (!value) { console.log(chalk.red("Provide a value: olly set apikey <your-key>")); return; }
+      const { writeFileSync, readFileSync, existsSync, mkdirSync } = await import("node:fs");
+      const envPath = getEnvPath();
+      const dir = envPath.split(/[\/\\]/).slice(0, -1).join("/");
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+      let content = existsSync(envPath) ? readFileSync(envPath, "utf8") : "";
+      const re = new RegExp(`^${p.envKey}=.*$`, "m");
+      const newLine = `${p.envKey}='${value}'`;
+      content = re.test(content) ? content.replace(re, newLine) : content + "\n" + newLine;
+      writeFileSync(envPath, content, "utf8");
+      process.env[p.envKey] = value;
+      console.log(chalk.green(`✔ ${p.envKey} updated.`));
+      return;
+    }
+    console.log(chalk.yellow(`Unknown key: ${key}`));
+    console.log(chalk.dim("Valid keys: provider, model, auto, apikey"));
+  });
+
+// ── olly status ───────────────────────────────────────────────────────────────
+program
+  .command("status")
+  .description("Show current provider, model and configuration status.")
+  .action(async () => {
+    await processSlashCommand("/status");
   });
 
 // ── olly ask "<question>" ─────────────────────────────────────────────────────
@@ -350,10 +408,15 @@ program
   .action(() => {
     const provider = process.env.OLLY_PROVIDER ?? "openrouter";
     const model = process.env.OLLY_MODEL ?? "(default)";
-    console.log(chalk.bold.cyan("\n⚡ Olly v2.0.0\n"));
+    console.log(chalk.bold.cyan("\n⚡ Olly v2.1.0\n"));
     console.log(`  Provider: ${chalk.green(provider)}`);
     console.log(`  Model:    ${chalk.green(model)}`);
     console.log(`  Bun:      ${chalk.dim(typeof Bun !== "undefined" ? Bun.version : "N/A")}`);
+    console.log();
+    console.log(chalk.dim("  Quick config:"));
+    console.log(chalk.dim("    olly set provider tokenlb"));
+    console.log(chalk.dim("    olly set model claude-opus-4-6"));
+    console.log(chalk.dim("    olly config"));
     console.log();
   });
 

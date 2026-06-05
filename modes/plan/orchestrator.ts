@@ -11,6 +11,7 @@ import { generatePlan } from "./planner.ts";
 import { printPlan } from "./selection.ts";
 import type { PlanStep } from "./types.ts";
 import { createWebTools } from "./web-tools.ts";
+import { processSlashCommand, printSlashSuggestions } from "../../tui/slash-commands";
 
 const COMPLEXITY_ICON: Record<NonNullable<PlanStep["complexity"]>, string> = {
   low: chalk.green("◆ low"),
@@ -47,12 +48,23 @@ async function executeStep(
 
 export async function runPlanMode(): Promise<void> {
   console.log(chalk.bold("\n🧭 Plan Mode\n"));
+  console.log(chalk.dim("  Type '/' for slash commands (/model /provider /config /help)\n"));
 
-  const goal = await text({ message: "What is your goal?" });
-  if (isCancel(goal) || !goal.trim()) return;
+  let goal: string | symbol;
+  while (true) {
+    goal = await text({ message: "What is your goal? (or '/' for commands)" });
+    if (isCancel(goal) || !(goal as string).trim()) return;
+
+    const trimmed = (goal as string).trim();
+    if (trimmed === "/") { printSlashSuggestions(); continue; }
+    if (trimmed.startsWith("/")) { await processSlashCommand(trimmed); continue; }
+    break;
+  }
+
+  const goalStr = (goal as string).trim();
 
   // --- Generate & display plan ---
-  const plan = await generatePlan(goal);
+  const plan = await generatePlan(goalStr);
   printPlan(plan);
 
   // --- Shared executor for all steps ---
@@ -115,7 +127,7 @@ export async function runPlanMode(): Promise<void> {
 
     const step = plan.steps.find((s) => s.id === choice);
     if (step) {
-      await executeStep(plan.goal, step, tools);
+      await executeStep(goalStr, step, tools);
       executed.add(step.id);
     }
   }

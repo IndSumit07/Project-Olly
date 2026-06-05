@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Olly – Dynamic AI Provider Factory
-// Supports: OpenRouter, OpenAI, Anthropic, Google, Groq, Mistral, xAI,
-//           DeepSeek, Cohere, Perplexity, Cerebras, Azure OpenAI, Ollama
+// Supports: TokenLB, OpenRouter, OpenAI, Anthropic, Google, Groq, Mistral,
+//           xAI, DeepSeek, Cohere, Perplexity, Cerebras, Azure OpenAI, Ollama
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { existsSync, readFileSync } from "node:fs";
@@ -84,6 +84,15 @@ export function getAgentModel(): LanguageModel {
   const modelId = process.env.OLLY_MODEL ?? "";
 
   switch (provider) {
+    // ── TokenLB (OpenAI-compatible) ────────────────────────────────────────
+    case "tokenlb": {
+      const tokenlb = createOpenAI({
+        apiKey: process.env.TOKENLB_API_KEY,
+        baseURL: "https://tokenlb.net/v1",
+      });
+      return asLanguageModel(tokenlb(modelId || "claude-opus-4-6"));
+    }
+
     // ── OpenRouter ──────────────────────────────────────────────────────────
     case "openrouter": {
       const router = createOpenRouter({ apiKey: process.env.OPENROUTER_API_KEY });
